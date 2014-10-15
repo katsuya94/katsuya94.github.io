@@ -1,0 +1,203 @@
+<html>
+<head>
+	<script src="ray.js"></script>
+
+	<script id="static-vs" type="x-shader/x-vertex">
+
+attribute vec4 a_position;
+attribute vec4 a_normal;
+
+uniform mat4 u_mvp;
+uniform mat4 u_model;
+uniform mat4 u_inverse_transpose_model;
+
+varying vec3 v_position;
+varying vec3 v_normal;
+
+void main() {
+	v_position = (u_model * a_position).xyz;
+	v_normal = normalize((u_inverse_transpose_model * a_normal).xyz);
+	gl_Position = u_mvp * a_position;
+}
+
+	</script>
+	<script id="static-fs" type="x-shader/x-fragment">
+
+precision mediump float;
+
+struct Material {
+	vec3 a;
+	vec3 d;
+	vec3 s;
+	float alpha;
+};
+
+Material black_plastic = Material(
+	vec3(0.05, 0.05, 0.05),
+	vec3(0.05, 0.05, 0.05),
+	vec3(0.5, 0.5, 0.5),
+	4.0);
+
+Material white_plastic = Material(
+	vec3(0.05, 0.05, 0.05),
+	vec3(0.55, 0.55, 0.55),
+	vec3(0.7, 0.7, 0.7),
+	4.0);
+
+uniform vec3 u_a_position;
+uniform vec3 u_a_ambient;
+uniform vec3 u_a_diffuse;
+uniform vec3 u_a_specular;
+
+uniform vec3 u_b_position;
+uniform vec3 u_b_ambient;
+uniform vec3 u_b_diffuse;
+uniform vec3 u_b_specular;
+
+uniform vec3 u_c_position;
+uniform vec3 u_c_ambient;
+uniform vec3 u_c_diffuse;
+uniform vec3 u_c_specular;
+
+uniform vec3 u_d_position;
+uniform vec3 u_d_ambient;
+uniform vec3 u_d_diffuse;
+uniform vec3 u_d_specular;
+
+uniform int u_state;
+
+uniform vec3 u_camera_position;
+
+uniform int u_mode;
+
+uniform vec3 u_ambient;
+uniform vec3 u_diffuse;
+uniform vec3 u_specular;
+uniform float u_alpha;
+
+varying vec3 v_position;
+varying vec3 v_normal;
+
+vec3 normal;
+vec3 reflection;
+
+vec3 calculate(vec3 position, vec3 ambient, vec3 diffuse, vec3 specular, Material material) {
+	vec3 shadow = normalize(position - v_position);
+	vec3 total = material.a * ambient;
+	float d = dot(shadow, normal);
+	if (d > 0.0) total += material.d * diffuse * d;
+	float s = dot(shadow, reflection);
+	if (s > 0.0) total += material.s * specular * pow(s, material.alpha); 
+	return total;
+}
+
+void main() {
+	normal = normalize(v_normal);
+	vec3 incident = normalize(v_position - u_camera_position);
+	reflection = incident - 2.0 * normal * dot(v_normal, incident);
+
+	Material material = Material(u_ambient, u_diffuse, u_specular, u_alpha);
+
+	if (u_mode == 1) {
+		int coord = int(floor(v_position.x)) + int(floor(v_position.y));
+		if (coord == (coord / 2) * 2) {
+			material = black_plastic;
+		} else {
+			material = white_plastic;
+		}
+	}
+
+	vec3 color = vec3(0.0, 0.0, 0.0);
+
+	if ((u_state / 1) != ((u_state / 2) * 2)) {
+		color += calculate(u_a_position, u_a_ambient, u_a_diffuse, u_a_specular, material);
+	}
+	if ((u_state / 2) != ((u_state / 4) * 2)) {
+		color += calculate(u_b_position, u_b_ambient, u_b_diffuse, u_b_specular, material);
+	}
+	if ((u_state / 4) != ((u_state / 8) * 2)) {
+		color += calculate(u_c_position, u_c_ambient, u_c_diffuse, u_c_specular, material);
+	}
+	if ((u_state / 8) != ((u_state / 16) * 2)) {
+		color += calculate(u_d_position, u_d_ambient, u_d_diffuse, u_d_specular, material);
+	}
+	gl_FragColor = vec4(color, 1.0);
+}
+
+	</script>
+	<script id="image-vs" type="x-shader/x-vertex">
+
+attribute vec2 a_rectangle;
+attribute vec2 a_texcoord;
+
+varying vec2 v_texcoord;
+
+void main() {
+	gl_Position = vec4(a_rectangle, 0.0, 1.0);
+	v_texcoord = a_texcoord;
+}
+
+	</script>
+	<script id="image-fs" type="x-shader/x-fragment">
+
+precision mediump float;
+
+uniform sampler2D u_image;
+
+varying vec2 v_texcoord;
+
+void main() {
+	gl_FragColor = texture2D(u_image, v_texcoord);
+}
+
+	</script>
+</head>
+<body onload="main()" onresize="resize()">
+	<canvas id="webgl" style="position: fixed; top: 0; left: 0;">
+		Your browser does not support HTML5.
+	</canvas>
+	<div id="help" style="background-color: white; position: fixed; bottom: 0; right: 0; margin: 0; padding: 20pt; z-index: 10;">
+		<ul>
+			<li>F1 - Open/close this dialogue</li>
+			<li>
+				Camera Controls
+				<ul>
+					<li>W - Forward</li>
+					<li>A - Left</li>
+					<li>S - Backward</li>
+					<li>D - Right</li>
+					<li>Q - Roll CCW</li>
+					<li>E - Roll CW</li>
+					<li>Arrow Keys - Look Around</li>
+				</ul>
+				<p>
+					Every time an image is Snapped a code is saved under the Camera tab in the control panel. If a valid code is entered into the box and UseCode is clicked. The camera will jump to the position represented by that code.
+				</p> 
+			</li>
+			<li>
+				Snapping Images
+				<p>
+					Click Snap in the control panel or press space to render with the current configuration. Note that this may take time depending on the settings.
+				</p>
+				<ul>
+					<li>AntiAliasing - Solves the issue of jagged edges at a huge performance cost</li>
+					<li>Detail - 0 is the full resolution of the window, values below that will render at lower resolutions</li>
+					<li>Recursion - The number of times, the light ray reflects.
+				</ul>
+			</li>
+			<li>
+				Lighting Controls
+				<p>
+					In the Lighting tab of the control panel, enter a light ID (0 - 3) and click get. The properties of the light should appear. After making adjustments, click update to update the light.
+				</p>
+			</li>
+			<li>
+				Loading Scenes
+				<p>
+					To load a scene, click LoadSceneA or LoadSceneB under the Scenes tab in the control panel. Note that while the WebGL preview will update automatically, the ray traced image will not update until another image is Snapped.
+				</p>
+			</li>
+		</ul>
+	</div>
+</body>
+</html>
